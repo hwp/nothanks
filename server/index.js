@@ -33,18 +33,22 @@ io.on("connection", (socket) => {
 
     const room = getOrCreateRoom(roomId);
 
-    let player = null;
-    if (playerId) {
-      player = room.players.find((p) => p.id === playerId);
+    const existingByName = room.players.find((p) =>
+      equalsIgnoreCase(p.name, trimmedName),
+    );
+    if (existingByName && existingByName.connected && existingByName.socketId !== socket.id) {
+      emitError(socket, "That name is already seated. Try a different one.");
+      return;
     }
 
+    let player = existingByName || null;
     if (player) {
       player.name = trimmedName;
-      player.socketId = socket.id;
       player.connected = true;
+      player.socketId = socket.id;
       addEvent(room, `${player.name} rejoined.`);
     } else {
-      const id = playerId || socket.id;
+      const id = generatePlayerId(room, trimmedName);
       player = {
         id,
         name: trimmedName,
@@ -433,4 +437,30 @@ function shuffle(list) {
     [array[i], array[j]] = [array[j], array[i]];
   }
   return array;
+}
+
+function equalsIgnoreCase(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") {
+    return false;
+  }
+  return a.localeCompare(b, undefined, { sensitivity: "accent" }) === 0;
+}
+
+function generatePlayerId(room, name) {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "player";
+
+  let attempt = 0;
+  while (attempt < 5) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = `${base}-${suffix}`;
+    const exists = room.players.some((player) => player.id === candidate);
+    if (!exists) {
+      return candidate;
+    }
+    attempt += 1;
+  }
+  return `${base}-${Date.now()}`;
 }
