@@ -39,7 +39,7 @@ def main(name, server_url, namespace, n_bots):
     suffixes = [''.join(random.choices(string.ascii_lowercase,k=3)) for _ in range(n_bots)]
     p_pass_list = [0.1 + 0.8 * i / (n_bots - 1) for i in range(n_bots)]
     bots = [
-        Bot(f"{name}-{s}-p{p:.2f}", server_url, namespace, p_pass=p)
+        RandomBot(f"{name}-{s}-p{p:.2f}", server_url, namespace, p_pass=p)
         for s, p in zip(suffixes, p_pass_list)
     ]
 
