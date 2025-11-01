@@ -1,4 +1,6 @@
+from collections import deque
 import socketio
+import threading
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,17 @@ class TurnState:
 
 
 class Bot:
-    def __init__(self, name, server_url, namespace):
+    def __init__(self, name, server_url, namespace, sequential=False):
         self.name = name
         self.server_url = server_url
         self.namespace = namespace
         self.match_states = {}
+
+        if sequential:
+            self.match_queue = deque()
+            self.cond = threading.Condition()
+        else:
+            self.match_queue = None
 
         self.sio = socketio.Client(
             reconnection=True,
@@ -52,9 +60,18 @@ class Bot:
     def on_match_started(self, msg):
         match_id = msg.get("matchId")
         self.match_states[match_id] = self.init_match()
+        logger.info(f"[{self.name}][{match_id}] match started")
+
+        if self.match_queue is not None:
+            self.match_queue.append(match_id)
 
     def on_turn(self, msg):
         match_id = msg.get("matchId")
+        if self.match_queue is not None:
+            with self.cond:
+                while self.match_queue and self.match_queue[0] != match_id:
+                    self.cond.wait()
+
         turn_state = TurnState(msg, self.bot_id)
         match_state = self.match_states[match_id]
 
@@ -73,6 +90,11 @@ class Bot:
 
     def on_match_ended(self, msg):
         match_id = msg.get("matchId")
+        if self.match_queue is not None:
+            with self.cond:
+                while self.match_queue and self.match_queue[0] != match_id:
+                    self.cond.wait()
+
         winners = msg["winners"]
 
         if self.bot_id in winners:
@@ -92,10 +114,15 @@ class Bot:
             for i in range(1, n_players)
         ]
 
-        logger.info(f"[{self.name}] match ended with {result} ({score=}, {others=})")
+        logger.info(f"[{self.name}][{match_id}] match ended with {result} ({score=}, {others=})")
 
         self.match_end_feedback(self.match_states[match_id], result, score, others)
         del self.match_states[match_id]
+
+        if self.match_queue is not None:
+            with self.cond:
+                self.match_queue.popleft()
+                self.cond.notify_all()
 
     def on_disconnect(self, msg):
         logger.info(f"[{self.name}] disconnected: {msg}")
