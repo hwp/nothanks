@@ -81,7 +81,7 @@ class Bot:
             else:
                 result = "win"
         else:
-            result = "lose"
+            result = "loss"
 
         n_players = len(msg["standings"])
         player_seq_id = next( i for i, p in enumerate(msg["standings"])
