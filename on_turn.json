@@ -1,0 +1,82 @@
+{
+   "currentCard" : 31,
+   "deckCount" : 11,
+   "history" : [
+      {
+         "message" : "SamplePythonBot-1-akh passed.",
+         "timestamp" : 1762015232700
+      },
+      {
+         "message" : "TEST took 8 and 1 chips.",
+         "timestamp" : 1762015232702
+      },
+      {
+         "message" : "TEST passed.",
+         "timestamp" : 1762015232706
+      },
+      {
+         "message" : "SamplePythonBot-2-hq7 passed.",
+         "timestamp" : 1762015232709
+      },
+      {
+         "message" : "SamplePythonBot-1-akh passed.",
+         "timestamp" : 1762015232712
+      }
+   ],
+   "matchId" : "match-1762015232634-ctz0",
+   "players" : [
+      {
+         "botId" : "samplepythonbot-2-hq7-m8v0",
+         "cards" : [
+            13,
+            15
+         ],
+         "chips" : 8,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "SamplePythonBot-2-hq7"
+      },
+      {
+         "botId" : "samplepythonbot-1-akh-d07c",
+         "cards" : [
+            3,
+            30,
+            32,
+            34
+         ],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "SamplePythonBot-1-akh"
+      },
+      {
+         "botId" : "test-ukom",
+         "cards" : [
+            7,
+            8,
+            10,
+            21,
+            25,
+            35
+         ],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : true,
+         "name" : "TEST"
+      }
+   ],
+   "pot" : 3,
+   "removedCount" : 9,
+   "you" : {
+      "cards" : [
+         7,
+         8,
+         10,
+         21,
+         25,
+         35
+      ],
+      "chips" : 11,
+      "name" : "TEST"
+   }
+}
