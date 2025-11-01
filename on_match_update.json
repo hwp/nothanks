@@ -1,0 +1,84 @@
+{
+   "currentCard" : 7,
+   "deckCount" : 17,
+   "history" : [
+      {
+         "message" : "SamplePythonBot-2-hq7 took 15.",
+         "timestamp" : 1762015232640
+      },
+      {
+         "message" : "SamplePythonBot-2-hq7 passed.",
+         "timestamp" : 1762015232642
+      },
+      {
+         "message" : "SamplePythonBot-1-akh took 30 and 1 chips.",
+         "timestamp" : 1762015232646
+      },
+      {
+         "message" : "SamplePythonBot-1-akh passed.",
+         "timestamp" : 1762015232649
+      },
+      {
+         "message" : "TEST took 35 and 1 chips.",
+         "timestamp" : 1762015232652
+      },
+      {
+         "message" : "TEST took 25.",
+         "timestamp" : 1762015232655
+      },
+      {
+         "message" : "TEST passed.",
+         "timestamp" : 1762015232658
+      },
+      {
+         "message" : "SamplePythonBot-2-hq7 passed.",
+         "timestamp" : 1762015232661
+      },
+      {
+         "message" : "SamplePythonBot-1-akh took 32 and 2 chips.",
+         "timestamp" : 1762015232664
+      },
+      {
+         "message" : "SamplePythonBot-1-akh took 3.",
+         "timestamp" : 1762015232669
+      }
+   ],
+   "matchId" : "match-1762015232634-ctz0",
+   "players" : [
+      {
+         "botId" : "samplepythonbot-2-hq7-m8v0",
+         "cards" : [
+            15
+         ],
+         "chips" : 9,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "SamplePythonBot-2-hq7"
+      },
+      {
+         "botId" : "samplepythonbot-1-akh-d07c",
+         "cards" : [
+            3,
+            30,
+            32
+         ],
+         "chips" : 13,
+         "connected" : true,
+         "isTurn" : true,
+         "name" : "SamplePythonBot-1-akh"
+      },
+      {
+         "botId" : "test-ukom",
+         "cards" : [
+            25,
+            35
+         ],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "TEST"
+      }
+   ],
+   "pot" : 0,
+   "removedCount" : 9
+}

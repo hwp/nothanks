@@ -1,0 +1,34 @@
+{
+   "currentCard" : 22,
+   "deckCount" : 23,
+   "history" : [],
+   "matchId" : "match-1762015233867-jnnl",
+   "players" : [
+      {
+         "botId" : "samplepythonbot-2-hq7-m8v0",
+         "cards" : [],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : true,
+         "name" : "SamplePythonBot-2-hq7"
+      },
+      {
+         "botId" : "test-ukom",
+         "cards" : [],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "TEST"
+      },
+      {
+         "botId" : "samplepythonbot-4-643-e5ga",
+         "cards" : [],
+         "chips" : 11,
+         "connected" : true,
+         "isTurn" : false,
+         "name" : "SamplePythonBot-4-643"
+      }
+   ],
+   "pot" : 0,
+   "removedCount" : 9
+}
