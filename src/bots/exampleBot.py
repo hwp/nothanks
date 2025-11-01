@@ -1,127 +1,182 @@
-import os
-import sys
+#!/usr/bin/env python
+
+import argparse
 import random
 import string
 import time
 import socketio
-import signal
+import logging
 
-# ==== CONFIG ====
-_NAMESPACE = '/bots'
-SERVER_URL = os.getenv("BOT_SERVER_URL", "http://localhost:3000")
-BOT_COUNT = int(os.getenv("BOT_COUNT", "3"))
-BASE_NAME = os.getenv("BOT_NAME", "SamplePythonBot")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-# ==== TYPES ====
-class TurnState:
+_DEFAULT_SERVER_URL = "http://localhost:3000"
+_DEFAULT_NAMESPACE = "/bots"
+_DEFAULT_BOT_COUNT = "3"
+_DEFAULT_BOT_NAME = "SamplePythonBot"
+
+
+class PlayerState:
     def __init__(self, data):
-        self.matchId = data.get("matchId")
-        self.currentCard = data.get("currentCard")
-        self.pot = data.get("pot", 0)
-        self.you = data.get("you", {"chips": 0, "cards": []})
-
-# ==== GLOBAL ====
-bots = []
-
-# ==== LOGIC ====
-def choose_action(state: TurnState) -> str:
-    if state.currentCard is None:
-        return "take"
-    if state.you.get("chips", 0) <= 0:
-        return "take"
-
-    cards = state.you.get("cards", [])
-    min_card = min(cards) if cards else float("inf")
-    potential_score = state.currentCard - state.pot
-    if potential_score <= min_card:
-        return "take"
-
-    return "pass" if random.random() < 0.5 else "take"
+        self.name= data["name"]
+        self.cards = data["cards"]
+        self.chips= data["chips"]
 
 
-def spawn_bot(name: str):
-    sio = socketio.Client(
-        reconnection=True,
-        reconnection_delay=1,
-        reconnection_delay_max=4,
-    )
+class TurnState:
+    def __init__(self, data, bot_id):
+        self.matchId = data["matchId"]
+        self.current = data["currentCard"]
+        self.pot = data["pot"]
+        self.n_players = len(data["players"])
 
-    bot = {"name": name, "socket": sio, "matchId": None}
-
-    @sio.on("registered", namespace=_NAMESPACE)
-    def on_registered(payload):
-        stats = payload.get("stats")
-        if stats:
-            print(f"[{name}] stats {stats}")
-        sio.emit("enqueue", namespace=_NAMESPACE)
-
-    @sio.on("matchStarted", namespace=_NAMESPACE)
-    def on_match_started(state):
-        bot["matchId"] = state.get("matchId")
-        players = ", ".join(p["name"] for p in state.get("players", []))
-        print(f"[{name}] match started against {players}")
-
-    @sio.on("turn", namespace=_NAMESPACE)
-    def on_turn(data):
-        if not data:
-            return
-        state = TurnState(data)
-        bot["matchId"] = state.matchId
-        decision = choose_action(state)
-        print(f"[{name}] chooses {decision} (card {state.currentCard}, pot {state.pot}, chips {state.you.get('chips')}).")
-        sio.emit("botAction", {"matchId": state.matchId, "action": decision}, namespace=_NAMESPACE)
-
-    @sio.on("matchUpdate", namespace=_NAMESPACE)
-    def on_match_update(state):
-        if not state:
-            return
-        bot["matchId"] = state.get("matchId")
-
-    @sio.on("matchEnded", namespace=_NAMESPACE)
-    def on_match_ended(summary):
-        if not summary:
-            return
-        standings = summary.get("standings", [])
-        winners = summary.get("winners", [])
-        placement = next((i + 1 for i, e in enumerate(standings) if e["name"] == name), None)
-        score = next((e.get("totalScore", "n/a") for e in standings if e["name"] == name), "n/a")
-        bot_id = next((e["botId"] for e in standings if e["name"] == name), "")
-        win = bot_id in winners
-        print(f"[{name}] match ended — place {placement}/{len(standings)} (score {score}){' ✅' if win else ''}")
-        bot["matchId"] = None
-
-    @sio.event(namespace=_NAMESPACE)
-    def disconnect(reason):
-        print(f"[{name}] disconnected: {reason}")
-
-    @sio.event(namespace=_NAMESPACE)
-    def connect_error(data):
-        print(f"[{name}] connection error: {data}")
-
-    sio.connect(f"{SERVER_URL}",  namespaces=["/bots"])
-    sio.emit("registerBot", {"name": name}, namespace=_NAMESPACE)
-    return bot
+        player_seq_id = next(i for i, p in enumerate(data["players"]) if p["botId"] == bot_id)
+        self.you = PlayerState(data["players"][player_seq_id])
+        self.others = [
+            PlayerState(data["players"][(player_seq_id + i) % self.n_players])
+            for i in range(1, self.n_players)
+        ]
 
 
-# ==== MAIN ====
-def shutdown(signal_received=None, frame=None):
-    print("\nShutting down bots…")
-    for bot in bots:
+class Bot:
+    def __init__(self, name, server_url, namespace, p_pass):
+        self.name = name
+        self.server_url = server_url
+        self.namespace = namespace
+        self.match_states = {}
+        self.p_pass = p_pass
+
+        self.sio = socketio.Client(
+            reconnection=True,
+            reconnection_delay=1,
+            reconnection_delay_max=4,
+        )
+        self.sio.on("registered", self.on_registered, namespace=self.namespace)
+        self.sio.on("matchStarted", self.on_match_started, namespace=self.namespace)
+        self.sio.on("turn", self.on_turn, namespace=self.namespace)
+        self.sio.on("matchUpdate", self.on_match_update, namespace=self.namespace)
+        self.sio.on("matchEnded", self.on_match_ended, namespace=self.namespace)
+        self.sio.on("disconnect", self.on_disconnect, namespace=self.namespace)
+        self.sio.on("connect_error", self.on_connect_error, namespace=self.namespace)
+
+    def on_registered(self, msg):
+        self.bot_id = msg["botId"]
+        self.sio.emit("enqueue", namespace=self.namespace)
+
+    def on_match_started(self, msg):
+        match_id = msg.get("matchId")
+        self.match_states[match_id] = self.init_match()
+
+    def on_turn(self, msg):
+        match_id = msg.get("matchId")
+        turn_state = TurnState(msg, self.bot_id)
+        match_state = self.match_states[match_id]
+
+        decision = self.choose_action(turn_state, match_state)
+        logger.debug(f"[{self.name}] chooses {decision} "
+              f"(card {turn_state.current}, pot {turn_state.pot}, "
+              f"chips {turn_state.you.chips}).")
+
+        self.sio.emit("botAction",
+                      {"matchId": match_id, "action": decision},
+                      namespace=self.namespace)
+
+    def on_match_update(self, msg):
+        # no need to react to match_update
+        pass
+
+    def on_match_ended(self, msg):
+        match_id = msg.get("matchId")
+        winners = msg["winners"]
+
+        if self.bot_id in winners:
+            if len(winners) > 1:
+                result = "draw"
+            else:
+                result = "win"
+        else:
+            result = "lose"
+
+        n_players = len(msg["standings"])
+        player_seq_id = next( i for i, p in enumerate(msg["standings"])
+                                if p["botId"] == self.bot_id)
+        score = msg["standings"][player_seq_id]["totalScore"]
+        others = [
+            msg["standings"][(player_seq_id + i) % n_players]["totalScore"]
+            for i in range(1, n_players)
+        ]
+
+        logger.info(f"[{self.name}] match ended with {result} ({score=}, {others=})")
+
+        self.match_end_feedback(self.match_states[match_id], result, score, others)
+        del self.match_states[match_id]
+
+    def on_disconnect(self, msg):
+        logger.info(f"[{self.name}] disconnected: {msg}")
+
+    def on_connect_error(self, msg):
+        logger.info(f"[{self.name}] connection error: {msg}")
+
+    def connect(self):
+        self.sio.connect(f"{self.server_url}",  namespaces=[self.namespace])
+        self.sio.emit("registerBot", {"name": self.name}, namespace=self.namespace)
+
+    def disconnect(self):
+        self.sio.disconnect()
+
+    def init_match(self):
+        # no match memory needed for dumb strategy
+        pass
+
+    def choose_action(self, turn_state, match_state) -> str:
+        if turn_state.you.chips <= 0:
+            return "take"
+
+        if turn_state.current - turn_state.pot <= 0:
+            return "take"
+
+        return "pass" if random.random() < self.p_pass else "take"
+
+    def match_end_feedback(self, match_state, result, score, others):
+        # no feedback is need for the dumb strategy
+        pass
+
+
+def main(name, server_url, namespace, n_bots):
+    suffixes = [''.join(random.choices(string.ascii_lowercase,k=3)) for _ in range(n_bots)]
+    p_pass_list = [0.1 + 0.8 * i / (n_bots - 1) for i in range(n_bots)]
+    bots = [
+        Bot(f"{name}-{s}-p{p:.2f}", server_url, namespace, p_pass=p)
+        for s, p in zip(suffixes, p_pass_list)
+    ]
+
+    try:
+        logger.info("All bots: Connecting ...")
+        for bot in bots:
+            bot.connect()
+        logger.info("All bots: Connected ...")
+
         try:
-            bot["socket"].disconnect()
-        except Exception:
+            while True:
+                time.sleep(10)  # Wait 1 second in each loop iteration
+        except KeyboardInterrupt:
             pass
-    time.sleep(0.2)
-    sys.exit(0)
-
+    finally:
+        logger.info("All bots: Disconnecting ...")
+        for bot in bots:
+            bot.disconnect()
+        logger.info("All bots: Disconnected ...")
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, shutdown)
+    parser = argparse.ArgumentParser("Example bots")
+    parser.add_argument("--server-url", type=str, default=_DEFAULT_SERVER_URL)
+    parser.add_argument("--namespace", type=str, default=_DEFAULT_NAMESPACE)
+    parser.add_argument("--n-bots", type=int, default=_DEFAULT_BOT_COUNT)
+    parser.add_argument("--name", type=str, default=_DEFAULT_BOT_NAME)
 
-    for i in range(BOT_COUNT):
-        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=3))
-        name = f"{BASE_NAME}-{i+1}-{suffix}"
-        bots.append(spawn_bot(name))
+    args = parser.parse_args()
 
-    while True:
-        time.sleep(1)
+    main(args.name, args.server_url, args.namespace, args.n_bots)
