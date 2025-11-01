@@ -19,6 +19,22 @@ _DEFAULT_NAMESPACE = "/bots"
 _DEFAULT_BOT_COUNT = "3"
 _DEFAULT_BOT_NAME = "SamplePythonBot"
 
+
+class RandomBot(Bot):
+    def __init__(self, name, server_url, namespace, p_pass):
+        super().__init__(name, server_url, namespace)
+        self.p_pass = p_pass
+
+    def choose_action(self, turn_state, match_state) -> str:
+        if turn_state.you.chips <= 0:
+            return "take"
+
+        if turn_state.current - turn_state.pot <= 0:
+            return "take"
+
+        return "pass" if random.random() < self.p_pass else "take"
+
+
 def main(name, server_url, namespace, n_bots):
     suffixes = [''.join(random.choices(string.ascii_lowercase,k=3)) for _ in range(n_bots)]
     p_pass_list = [0.1 + 0.8 * i / (n_bots - 1) for i in range(n_bots)]

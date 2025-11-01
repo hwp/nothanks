@@ -1,5 +1,4 @@
 import socketio
-import random
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,12 +26,11 @@ class TurnState:
 
 
 class Bot:
-    def __init__(self, name, server_url, namespace, p_pass):
+    def __init__(self, name, server_url, namespace):
         self.name = name
         self.server_url = server_url
         self.namespace = namespace
         self.match_states = {}
-        self.p_pass = p_pass
 
         self.sio = socketio.Client(
             reconnection=True,
@@ -117,16 +115,8 @@ class Bot:
         pass
 
     def choose_action(self, turn_state, match_state) -> str:
-        if turn_state.you.chips <= 0:
-            return "take"
-
-        if turn_state.current - turn_state.pot <= 0:
-            return "take"
-
-        return "pass" if random.random() < self.p_pass else "take"
+        raise NotImplementedError
 
     def match_end_feedback(self, match_state, result, score, others):
         # no feedback is need for the dumb strategy
         pass
-
-
