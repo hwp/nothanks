@@ -64,14 +64,17 @@ def _feature_from_player_state(player):
     ]
 
 def _delta_mavg(scores, weight):
-    delta_sum = 0
-    weight_sum = 0
-    for i, w in enumerate(weight):
-        n = i + 1
-        scores_n = np.concatenate((scores[n:], np.ones(n-1) * scores[-1])) # repeat match end score
-        delta_sum += (scores_n - scores[:-1]) * w # no need for the match end score
-        weight_sum += w
-    return delta_sum / weight_sum
+    if weight:
+        delta_sum = 0
+        weight_sum = 0
+        for i, w in enumerate(weight):
+            n = i + 1
+            scores_n = np.concatenate((scores[n:], np.ones(n-1) * scores[-1])) # repeat match end score
+            delta_sum += (scores_n - scores[:-1]) * w # no need for the match end score
+            weight_sum += w
+        return delta_sum / weight_sum
+    else:
+        return 0.0
 
 
 def _simple_reward(config, score_history, result):
@@ -140,7 +143,7 @@ class NeuralNetworkBot(Bot):
         if probs[0] < 0.1:
             probs = [0.1, 0.9]
         elif probs[0] > 0.9:
-            probs = [1.9, 0.1]
+            probs = [0.9, 0.1]
         return np.random.choice(len(probs), p=probs)
 
     def choose_action(self, turn_state, match_state) -> str:
