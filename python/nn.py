@@ -13,8 +13,8 @@ from utils import (
     compute_score,
     feature_from_player_state,
     result_and_score_reward,
+    result_reward,
     to_binary_vector,
-result_reward
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,9 @@ class NeuralNetworkBot(Bot):
         init_model: str = None,
         arch_json: str = None,
     ):
-        super().__init__(name, server_url, namespace, sequential=True)
+        super().__init__(
+            name=name, server_url=server_url, namespace=namespace, sequential=True
+        )
         self.eval_mode = eval_mode
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_dir = model_dir

@@ -16,7 +16,7 @@ _DEFAULT_CHECKPOINT_EVERY = 50
 
 
 if __name__ == "__main__":
-    parser = get_parser("Launch NN-base bots", default_name=_DEFAULT_BOT_NAME)
+    parser = get_parser("Launch DQN-based bots", default_name=_DEFAULT_BOT_NAME)
     args = parser.parse_args()
 
     main(

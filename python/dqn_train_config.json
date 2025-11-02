@@ -1,4 +1,4 @@
 {
   "lr": 0.001,
-  "checkpoint_every" : 100
+  "checkpoint_every" : 1000
 }

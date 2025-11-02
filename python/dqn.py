@@ -29,14 +29,14 @@ class DQNBot(NeuralNetworkBot):
         arch_json=None,
     ):
         super().__init__(
-            name,
-            server_url,
-            namespace,
-            eval_mode,
-            model_dir,
-            train_config,
-            init_model,
-            arch_json,
+            name=name,
+            server_url=server_url,
+            namespace=namespace,
+            model_dir=model_dir,
+            eval_mode=eval_mode,
+            train_config=train_config,
+            init_model=init_model,
+            arch_json=arch_json,
         )
 
         if eval_mode:
@@ -53,7 +53,7 @@ class DQNBot(NeuralNetworkBot):
         self.replay = deque(maxlen=buffer_size)
 
         self.gamma = train_config.get("gamma", 0.99)
-        self.epsilon_start = train_config.get("epsilon_start", 1.0)
+        self.epsilon = train_config.get("epsilon_start", 1.0)
         self.epsilon_end = train_config.get("epsilon_end", 0.05)
         self.epsilon_decay = train_config.get("epsilon_decay", 0.9999)
 
@@ -61,6 +61,9 @@ class DQNBot(NeuralNetworkBot):
         self.target_model = copy.deepcopy(self.model)
         self.target_model.to(self.device)
         self.target_model.eval()
+
+    def load_reward_config(self, reward_config):
+        pass
 
     def init_match(self):
         return {}
