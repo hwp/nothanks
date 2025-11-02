@@ -8,7 +8,7 @@ import time
 
 import torch
 
-from nn import NeuralNetworkBot
+from dqn import DQNBot
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SERVER_URL = "http://localhost:3000"
 _DEFAULT_NAMESPACE = "/bots"
 _DEFAULT_BOT_COUNT = 1
-_DEFAULT_BOT_NAME = "NNBot"
-_DEFAULT_CHECKPOINT_EVERY = 50  # number of updates between saving checkpoints
+_DEFAULT_BOT_NAME = "DQNBot"
+_DEFAULT_CHECKPOINT_EVERY = 50
 _DEFAULT_MODEL_DIR = "models"
 _DEFAULT_REWARD_CONFIG = "reward_config.json"
 
@@ -41,7 +41,7 @@ def main(
         "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
     ]
     bots = [
-        NeuralNetworkBot(
+        DQNBot(
             f"{name}-{s}",
             server_url,
             namespace,
@@ -73,7 +73,7 @@ def main(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("NeuralNetworkBots")
+    parser = argparse.ArgumentParser("DQNBots")
     parser.add_argument("--server-url", type=str, default=_DEFAULT_SERVER_URL)
     parser.add_argument("--namespace", type=str, default=_DEFAULT_NAMESPACE)
     parser.add_argument("--n-bots", type=int, default=_DEFAULT_BOT_COUNT)

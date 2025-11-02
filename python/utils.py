@@ -1,5 +1,6 @@
 import numpy as np
-import torch.nn as nn
+
+ACTIONS = ["take", "pass"]
 
 
 def compute_score(cards, chips):
@@ -12,18 +13,6 @@ def compute_score(cards, chips):
         if cards[i] != cards[i - 1] + 1:
             total += cards[i]
     return total - chips
-
-
-def build_model_from_json(arch_def):
-    """Recursively build nn.Module from JSON list structure"""
-    module_type, module_args = arch_def
-
-    if module_type == "Sequential":
-        return nn.Sequential(*[build_model_from_json(a) for a in module_args])
-    elif hasattr(nn, module_type):
-        return getattr(nn, module_type)(**module_args)
-    else:
-        raise ValueError(f"Unknown layer type: {module_type}")
 
 
 def to_binary_vector(cards):
@@ -58,8 +47,12 @@ def _delta_mavg(scores, weight):
         return 0.0
 
 
+def result_reward(result):
+    return {"win": 1.0, "draw": 0.0, "loss": -1.0}[result]
+
+
 def result_and_score_reward(config, score_history, result):
-    result_reward = {"win": 1.0, "draw": 0.0, "loss": -1.0}[result]
+    result_reward_ = result_reward(result)
 
     others_scores = np.array([s["others"] for s in score_history])
     self_scores = np.array([s["score"] for s in score_history])
@@ -67,7 +60,7 @@ def result_and_score_reward(config, score_history, result):
     rel_obest = self_scores - others_scores.min(axis=1)
 
     return (
-        result_reward * config["result_weight"]
+        result_reward_ * config["result_weight"]
         - _delta_mavg(self_scores, config["self_delta_mavg_weight"])
         * config["self_delta_weight"]
         - _delta_mavg(rel_oavg, config["rel_oavg_delta_mavg_weight"])
