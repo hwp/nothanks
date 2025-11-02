@@ -64,15 +64,20 @@ def _feature_from_player_state(player):
         *_to_binary_vector(player.cards)
     ]
 
+
 def _delta_mavg(scores, weight):
     if weight:
         delta_sum = 0
         weight_sum = 0
         for i, w in enumerate(weight):
-            n = i + 1
-            scores_n = np.concatenate((scores[n:], np.ones(n-1) * scores[-1])) # repeat match end score
-            delta_sum += (scores_n - scores[:-1]) * w # no need for the match end score
-            weight_sum += w
+            if w > 0:
+                n = i + 1
+                if n >= scores.shape[0]:
+                    scores_n = np.ones(scores.shape[0]-1) * scores[-1] # repeat match end score
+                else:
+                    scores_n = np.concatenate((scores[n:], np.ones(n-1) * scores[-1])) # repeat match end score
+                delta_sum += (scores_n - scores[:-1]) * w # no need for the match end score
+                weight_sum += w
         return delta_sum / weight_sum
     else:
         return 0.0
@@ -174,6 +179,10 @@ class NeuralNetworkBot(Bot):
             raise ValueError(f"Unknown {self.reward_config['type']=}")
 
     def match_end_feedback(self, match_state, result, score, others):
+        if not match_state["chosen_logits"]:
+            logger.warning(f"[{self.name}] no history of logits found")
+            return
+
         match_state["score_history"].append({"score": score, "others": others})
         rewards = self.compute_reward(match_state["score_history"], result)
 
