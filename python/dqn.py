@@ -119,7 +119,8 @@ class DQNBot(NeuralNetworkBot):
                 checkpoint_path = os.path.join(self.model_dir, f"{self.name}.pt")
                 torch.save(self.model, checkpoint_path)
             logger.info(
-                f"[{self.name}] saved checkpoint at {checkpoint_path} and target network updated"
+                f"[{self.name}] saved checkpoint%{self.update_count} at "
+                f"{checkpoint_path} and target network updated"
             )
 
     def match_end_feedback(self, match_state, result, score, others):
