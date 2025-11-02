@@ -17,12 +17,16 @@ _DEFAULT_BOT_NAME = "NNBot"
 _DEFAULT_MODEL_DIR = "models"
 
 
-def bot_factory(n_bots, name, **kwargs):
-    suffixes = [
-        "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
-    ]
-    bots = [NeuralNetworkBot(f"{name}-{s}", **kwargs) for s in suffixes]
-    return bots
+class BotFactory:
+    def __init__(self, get_one):
+        self.get_one = get_one
+
+    def __call__(self, n_bots, name, **kwargs):
+        suffixes = [
+            "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
+        ]
+        bots = [self.get_one(f"{name}-{s}", **kwargs) for s in suffixes]
+        return bots
 
 
 def get_parser(description, default_name):
@@ -48,11 +52,11 @@ def get_parser(description, default_name):
 
 
 if __name__ == "__main__":
-    parser = get_parser("Launch NN-base bots", default_name=_DEFAULT_BOT_NAME)
+    parser = get_parser("Launch NN-based bots", default_name=_DEFAULT_BOT_NAME)
     args = parser.parse_args()
 
     main(
-        bot_factory,
+        BotFactory(NeuralNetworkBot),
         name=args.name,
         server_url=args.server_url,
         namespace=args.namespace,
