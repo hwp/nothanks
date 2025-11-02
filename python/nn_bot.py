@@ -179,6 +179,10 @@ class NeuralNetworkBot(Bot):
             raise ValueError(f"Unknown {self.reward_config['type']=}")
 
     def match_end_feedback(self, match_state, result, score, others):
+        if not match_state["chosen_logits"]:
+            logger.warning(f"[{self.name}] no history of logits found")
+            return
+
         match_state["score_history"].append({"score": score, "others": others})
         rewards = self.compute_reward(match_state["score_history"], result)
 
