@@ -10,6 +10,7 @@ import torch.optim as optim
 from bot import Bot
 from utils import (
     ACTIONS,
+    TAKE,
     compute_score,
     feature_from_player_state,
     result_and_score_reward,
@@ -123,7 +124,11 @@ class NeuralNetworkBot(Bot):
         logits = self.model(x)
         log_probs = torch.log_softmax(logits, dim=0)
         probs = torch.exp(log_probs).detach().cpu().numpy()
-        action_idx = self.sample_action_from_probs(probs)
+
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        else:
+            action_idx = self.sample_action_from_probs(probs)
 
         match_state["chosen_logits"].append(logits[action_idx])
         scores = {
@@ -135,10 +140,13 @@ class NeuralNetworkBot(Bot):
         return action_idx
 
     def choose_action_eval(self, x, turn_state, match_state):
-        with torch.no_grad():
-            self.model.eval()
-            logits = self.model(x)
-            action_idx = logits.argmax().item()
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        else:
+            with torch.no_grad():
+                self.model.eval()
+                logits = self.model(x)
+                action_idx = logits.argmax().item()
         return action_idx
 
     def choose_action(self, turn_state, match_state) -> str:

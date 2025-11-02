@@ -6,12 +6,11 @@ import random
 import threading
 from collections import deque
 
-import numpy as np
 import torch
 import torch.nn as nn
 
 from nn import NeuralNetworkBot
-from utils import ACTIONS
+from utils import PASS, TAKE
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +55,7 @@ class DQNBot(NeuralNetworkBot):
         self.epsilon = train_config.get("epsilon_start", 1.0)
         self.epsilon_end = train_config.get("epsilon_end", 0.05)
         self.epsilon_decay = train_config.get("epsilon_decay", 0.9999)
+        self.explore_p_pass = train_config.get("explore_p_pass", 0.5)
 
         # Target network
         self.target_model = copy.deepcopy(self.model)
@@ -69,8 +69,10 @@ class DQNBot(NeuralNetworkBot):
         return {}
 
     def choose_action_train(self, x, turn_state, match_state):
-        if random.random() < self.epsilon:
-            action_idx = np.random.randint(len(ACTIONS))
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        elif random.random() < self.epsilon:
+            action_idx = PASS if random.random() < self.explore_p_pass else TAKE
         else:
             with torch.no_grad() and self.lock:
                 self.model.eval()
@@ -78,7 +80,13 @@ class DQNBot(NeuralNetworkBot):
                 action_idx = q_values.argmax().item()
 
         if "last_state" in match_state:
-            self.observe(match_state, next_state=x, reward=0.0, final=0.0)
+            self.observe(
+                match_state,
+                next_state=x,
+                reward=0.0,
+                final=0.0,
+                broke=1.0 if turn_state.you.chips <= 0 else 0.0,  # broke at this turn
+            )
 
         match_state["last_state"] = x
         match_state["last_action"] = action_idx
@@ -86,32 +94,45 @@ class DQNBot(NeuralNetworkBot):
         return action_idx
 
     def choose_action_eval(self, x, turn_state, match_state):
-        with torch.no_grad() and self.lock:
-            self.model.eval()
-            q_values = self.model(x.unsqueeze(0)).squeeze(0)
-            action_idx = q_values.argmax().item()
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        else:
+            with torch.no_grad() and self.lock:
+                self.model.eval()
+                q_values = self.model(x.unsqueeze(0)).squeeze(0)
+                action_idx = q_values.argmax().item()
         return action_idx
 
-    def observe(self, match_state, next_state, reward, final):
+    def observe(self, match_state, next_state, reward, final, broke):
+        """
+        Args:
+           next_state: input for next state
+           reward: reward seen on next turn
+           final: if next state is ending state (match end)
+           broke: if next state is broke (no chips) == action has to be TAKE
+        """
         s = match_state.pop("last_state")
         a = match_state.pop("last_action")
-        self.replay.append((s, a, reward, next_state, final))
+        self.replay.append((s, a, reward, next_state, final, broke))
 
         if len(self.replay) >= self.batch_size:
             self.train_step()
 
     def train_step(self):
         batch = random.sample(self.replay, self.batch_size)
-        s, a, r, s2, f = zip(*batch)
+        s, a, r, s2, f, b = zip(*batch)
         s = torch.stack(s)
         a = torch.tensor(a, dtype=torch.int64, device=self.device).unsqueeze(1)
         r = torch.tensor(r, dtype=torch.float32, device=self.device).unsqueeze(1)
         s2 = torch.stack(s2)
         f = torch.tensor(f, dtype=torch.float32, device=self.device).unsqueeze(1)
+        b = torch.tensor(f, dtype=torch.float32, device=self.device).unsqueeze(1)
 
         with torch.no_grad():
-            next_q = self.target_model(s2).max(1, keepdim=True)[0]
-            target = r + self.gamma * (1 - f) * next_q
+            next_qa = self.target_model(s2)
+            next_q_broke = next_qa[:, [TAKE]]
+            next_q = next_qa.max(1, keepdim=True)[0]
+            target = r + self.gamma * (1 - f) * ((1 - b) * next_q + b * next_q_broke)
 
         with self.lock:
             self.model.train()
@@ -145,4 +166,5 @@ class DQNBot(NeuralNetworkBot):
                 next_state=match_state["last_state"],  # this is just a place holder
                 reward=self.reward_map[result],
                 final=1.0,
+                broke=0.0,  # doesn't matter for the ending state
             )

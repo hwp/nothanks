@@ -1,5 +1,7 @@
 import numpy as np
 
+TAKE = 0
+PASS = 1
 ACTIONS = ["take", "pass"]
 
 
