@@ -30,7 +30,7 @@ class DQNBot(NeuralNetworkBot):
         gamma=0.99,
         epsilon_start=1.0,
         epsilon_end=0.05,
-        epsilon_decay=0.995,
+        epsilon_decay=0.9995,
         buffer_size=5000,
         batch_size=64,
     ):
@@ -39,7 +39,7 @@ class DQNBot(NeuralNetworkBot):
             server_url,
             namespace,
             model_dir,
-            reward_config,
+            reward_config,  # not used
             init_model,
             arch_json,
             lr,
@@ -59,6 +59,9 @@ class DQNBot(NeuralNetworkBot):
 
         # thread lock to avoid concurent model update
         self.lock = threading.Lock()
+
+    def init_match(self):
+        return {}
 
     def choose_action(self, turn_state, match_state):
         x = self.extract_feature(turn_state)
@@ -120,9 +123,10 @@ class DQNBot(NeuralNetworkBot):
             )
 
     def match_end_feedback(self, match_state, result, score, others):
-        self.observe(
-            match_state,
-            next_state=match_state["last_state"],  # this is just a place holder
-            reward=result_reward(result),
-            final=1.0,
-        )
+        if "last_state" in match_state:
+            self.observe(
+                match_state,
+                next_state=match_state["last_state"],  # this is just a place holder
+                reward=result_reward(result),
+                final=1.0,
+            )
