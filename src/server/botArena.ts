@@ -23,6 +23,7 @@ type BotStatsSnapshot = {
 
 type BotProfile = {
   id: string;
+  secret: string;
   name: string;
   rating: number;
   games: number;
@@ -34,8 +35,9 @@ type BotProfile = {
 
 type ActiveBot = {
   id: string;
+  secret: string;
   name: string;
-  socket: Socket;
+  socket: Socket | null;
   connected: boolean;
   profile: BotProfile;
   currentMatchId: string | null;
@@ -69,7 +71,7 @@ const ELO_K = 32;
 export default class BotArena {
   private readonly namespace: Namespace;
 
-  private readonly names = new Map<string, BotProfile>();
+  private readonly profilesBySecret = new Map<string, BotProfile>();
 
   private readonly profilesById = new Map<string, BotProfile>();
 
@@ -93,7 +95,7 @@ export default class BotArena {
   }
 
   private handleConnection(socket: Socket): void {
-    socket.once("registerBot", (payload: { name?: string } = {}, ack?: (res: AckPayload) => void) => {
+    socket.once("registerBot", (payload: { name?: string; secret?: string } = {}, ack?: (res: AckPayload) => void) => {
       this.registerBot(socket, payload, ack);
     });
     socket.on("botAction", (payload: { matchId?: string; action?: string } = {}) => {
@@ -110,25 +112,25 @@ export default class BotArena {
     });
   }
 
-  private registerBot(socket: Socket, payload: { name?: string }, ack?: (res: AckPayload) => void): void {
-    const name = typeof payload.name === "string" ? payload.name.trim() : "";
-    if (!name) {
-      this.sendAck(ack, { ok: false, error: "Bot name is required." });
-      socket.disconnect(true);
-      return;
-    }
-    if (name.length > 36) {
-      this.sendAck(ack, { ok: false, error: "Bot name must be 36 characters or fewer." });
+  private registerBot(
+    socket: Socket,
+    payload: { name?: string; secret?: string },
+    ack?: (res: AckPayload) => void,
+  ): void {
+    const secret = typeof payload.secret === "string" ? payload.secret.trim() : "";
+    if (!secret) {
+      this.sendAck(ack, { ok: false, error: "Secret key is required." });
       socket.disconnect(true);
       return;
     }
 
-    const key = name.toLowerCase();
-    let profile = this.names.get(key);
+    const name = (payload.name ?? "").trim().slice(0, 36) || "Bot";
+
+    let profile = this.profilesBySecret.get(secret);
     if (profile) {
       const existingBot = this.activeBots.get(profile.id);
       if (existingBot && existingBot.socket && existingBot.socket.id !== socket.id) {
-        this.sendAck(ack, { ok: false, error: "Bot name already connected." });
+        this.sendAck(ack, { ok: false, error: "Bot with this secret is already connected." });
         socket.disconnect(true);
         return;
       }
@@ -137,6 +139,7 @@ export default class BotArena {
       const id = this.generateBotId(name);
       profile = {
         id,
+        secret,
         name,
         rating: DEFAULT_RATING,
         games: 0,
@@ -145,12 +148,13 @@ export default class BotArena {
         draws: 0,
         lastSeen: Date.now(),
       };
-      this.names.set(key, profile);
+      this.profilesBySecret.set(secret, profile);
       this.profilesById.set(id, profile);
     }
 
     const bot: ActiveBot = {
       id: profile.id,
+      secret: profile.secret,
       name: profile.name,
       socket,
       connected: true,
@@ -159,6 +163,7 @@ export default class BotArena {
     };
     this.activeBots.set(bot.id, bot);
     socket.data.botId = bot.id;
+    socket.data.botSecret = profile.secret;
     profile.lastSeen = Date.now();
 
     this.sendAck(ack, {
@@ -208,7 +213,7 @@ export default class BotArena {
       return;
     }
     bot.connected = false;
-    bot.socket = socket;
+    bot.socket = null;
     this.activeBots.delete(bot.id);
 
     this.removeFromQueue(bot.id);
@@ -340,13 +345,24 @@ export default class BotArena {
     });
   }
 
-  getLeaderboard(): Array<BotProfile & { winRate: number }> {
+  getLeaderboard(): Array<
+    Pick<BotProfile, "id" | "name" | "games" | "wins" | "losses" | "draws" | "lastSeen"> & {
+      rating: number;
+      winRate: number;
+    }
+  > {
     const profiles = Array.from(this.profilesById.values());
     profiles.sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
     return profiles.map((profile) => ({
-      ...profile,
+      id: profile.id,
+      name: profile.name,
       rating: Math.round(profile.rating),
+      games: profile.games,
+      wins: profile.wins,
+      losses: profile.losses,
+      draws: profile.draws,
       winRate: profile.games ? profile.wins / profile.games : 0,
+      lastSeen: profile.lastSeen,
     }));
   }
 

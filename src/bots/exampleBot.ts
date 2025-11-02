@@ -14,21 +14,25 @@ type TurnState = {
 const SERVER_URL = process.env.BOT_SERVER_URL || "http://localhost:3000";
 const BOT_COUNT = Number.parseInt(process.env.BOT_COUNT || "3", 10);
 const BASE_NAME = process.env.BOT_NAME || "SampleBot";
+const BASE_SECRET =
+  process.env.BOT_SECRET || `sample-secret-${Math.random().toString(36).slice(2, 10)}`;
 
 interface SampleBot {
   name: string;
   socket: Socket;
   matchId: string | null;
+  secret: string;
 }
 
 const bots: SampleBot[] = [];
 
 for (let i = 0; i < BOT_COUNT; i += 1) {
   const name = `${BASE_NAME}-${i + 1}-${Math.random().toString(36).slice(2, 5)}`;
-  bots.push(spawnBot(name));
+  const secret = BOT_COUNT > 1 ? `${BASE_SECRET}-${i + 1}` : BASE_SECRET;
+  bots.push(spawnBot(name, secret));
 }
 
-function spawnBot(name: string): SampleBot {
+function spawnBot(name: string, secret: string): SampleBot {
   const socket = io(`${SERVER_URL}/bots`, {
     transports: ["websocket", "polling"],
     reconnection: true,
@@ -40,11 +44,12 @@ function spawnBot(name: string): SampleBot {
     name,
     socket,
     matchId: null,
+    secret,
   };
 
   socket.on("connect", () => {
     console.log(`[${name}] connected, registering…`);
-    socket.emit("registerBot", { name }, (ack?: { ok?: boolean; error?: string; rating?: number }) => {
+    socket.emit("registerBot", { name, secret }, (ack?: { ok?: boolean; error?: string; rating?: number }) => {
       if (!ack?.ok) {
         console.error(`[${name}] registration failed: ${ack?.error || "unknown error"}`);
         return;
