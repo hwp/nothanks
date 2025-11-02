@@ -87,7 +87,7 @@ class NeuralNetworkBot(Bot):
 
         self.log_loss_every = train_config.get("log_loss_every", 100)
         self.loss_count = 0
-        self.loss_sum = 1.0
+        self.loss_sum = 0.0
 
         self.reward_config = self.load_reward_config(train_config.get("reward_config"))
 
