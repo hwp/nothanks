@@ -26,6 +26,7 @@ _DEFAULT_REWARD_CONFIG = "reward_config.json"
 
 def main(
     name,
+    eval_mode,
     server_url,
     namespace,
     n_bots,
@@ -45,7 +46,8 @@ def main(
             f"{name}-{s}",
             server_url,
             namespace,
-            model_dir,
+            eval_mode=eval_mode,
+            model_dir=model_dir,
             reward_config=reward_config,
             init_model=init_model,
             arch_json=arch_json,
@@ -74,6 +76,7 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("NeuralNetworkBots")
+    parser.add_argument("--eval-mode", action='store_true')
     parser.add_argument("--server-url", type=str, default=_DEFAULT_SERVER_URL)
     parser.add_argument("--namespace", type=str, default=_DEFAULT_NAMESPACE)
     parser.add_argument("--n-bots", type=int, default=_DEFAULT_BOT_COUNT)
@@ -102,6 +105,7 @@ if __name__ == "__main__":
 
     main(
         args.name,
+        args.eval_mode,
         args.server_url,
         args.namespace,
         args.n_bots,

@@ -37,6 +37,7 @@ class NeuralNetworkBot(Bot):
         name,
         server_url,
         namespace,
+        eval_mode : bool,
         model_dir,
         reward_config,
         init_model: str = None,
@@ -45,6 +46,7 @@ class NeuralNetworkBot(Bot):
         checkpoint_every=100,
     ):
         super().__init__(name, server_url, namespace, sequential=True)
+        self.eval_mode = eval_mode
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_dir = model_dir
         self.checkpoint_every = checkpoint_every
@@ -96,26 +98,39 @@ class NeuralNetworkBot(Bot):
         elif probs[0] > 0.9:
             probs = [0.9, 0.1]
         return np.random.choice(len(probs), p=probs)
-
-    def choose_action(self, turn_state, match_state) -> str:
-        x = self.extract_feature(turn_state)
-
+    
+    def choose_action_train(self, x, turn_state, match_state):
+        self.model.train()
         logits = self.model(x)
         log_probs = torch.log_softmax(logits, dim=0)
         probs = torch.exp(log_probs).detach().cpu().numpy()
-
         action_idx = self.sample_action_from_probs(probs)
-        action = ACTIONS[action_idx]
-
+        
         match_state["chosen_logits"].append(logits[action_idx])
-
         scores = {
             "score": compute_score(turn_state.you.cards, turn_state.you.chips),
             "others": [compute_score(p.cards, p.chips) for p in turn_state.others],
         }
         match_state["score_history"].append(scores)
 
-        return action
+        return action_idx
+
+    def choose_action_eval(self, x, turn_state, match_state):
+        with torch.no_grad():
+            self.model.eval()
+            logits = self.model(x)
+            action_idx = logits.argmax().item()
+        return action_idx
+
+    def choose_action(self, turn_state, match_state) -> str:
+        x = self.extract_feature(turn_state)
+        
+        if self.eval_mode:
+            action_idx = self.choose_action_eval(x, turn_state, match_state)
+        else:
+            action_idx = self.choose_action_train(x, turn_state, match_state)
+
+        return ACTIONS[action_idx]
 
     def compute_reward(self, score_history, result):
         if self.reward_config["type"] == "result_and_score":
@@ -126,6 +141,9 @@ class NeuralNetworkBot(Bot):
             raise ValueError(f"Unknown {self.reward_config['type']=}")
 
     def match_end_feedback(self, match_state, result, score, others):
+        if self.eval_mode:
+            return
+
         if not match_state["chosen_logits"]:
             logger.warning(f"[{self.name}] no history of logits found")
             return

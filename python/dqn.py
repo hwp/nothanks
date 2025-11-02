@@ -21,6 +21,7 @@ class DQNBot(NeuralNetworkBot):
         name,
         server_url,
         namespace,
+        eval_mode: bool,
         model_dir,
         reward_config,
         init_model=None,
@@ -30,7 +31,7 @@ class DQNBot(NeuralNetworkBot):
         gamma=0.99,
         epsilon_start=1.0,
         epsilon_end=0.05,
-        epsilon_decay=0.9995,
+        epsilon_decay=0.9999,
         buffer_size=5000,
         batch_size=64,
     ):
@@ -38,6 +39,7 @@ class DQNBot(NeuralNetworkBot):
             name,
             server_url,
             namespace,
+            eval_mode,
             model_dir,
             reward_config,  # not used
             init_model,
@@ -63,23 +65,29 @@ class DQNBot(NeuralNetworkBot):
     def init_match(self):
         return {}
 
-    def choose_action(self, turn_state, match_state):
-        x = self.extract_feature(turn_state)
+    def choose_action_train(self, x, turn_state, match_state):
+        if random.random() < self.epsilon:
+            action_idx = np.random.randint(len(ACTIONS))
+        else:
+            with torch.no_grad() and self.lock:
+                self.model.eval()
+                q_values = self.model(x.unsqueeze(0)).squeeze(0)
+                action_idx = q_values.argmax().item()
 
         if "last_state" in match_state:
             self.observe(match_state, next_state=x, reward=0.0, final=0.0)
 
-        if random.random() < self.epsilon:
-            action_idx = np.random.randint(len(ACTIONS))
-        else:
-            with torch.no_grad():
-                q_values = self.model(x)
-                action_idx = q_values.argmax().item()
-
         match_state["last_state"] = x
         match_state["last_action"] = action_idx
 
-        return ACTIONS[action_idx]
+        return action_idx
+
+    def choose_action_eval(self, x, turn_state, match_state):
+        with torch.no_grad() and self.lock:
+            self.model.eval()
+            q_values = self.model(x.unsqueeze(0)).squeeze(0)
+            action_idx = q_values.argmax().item()
+        return action_idx
 
     def observe(self, match_state, next_state, reward, final):
         s = match_state.pop("last_state")
@@ -103,6 +111,7 @@ class DQNBot(NeuralNetworkBot):
             target = r + self.gamma * (1 - f) * next_q
 
         with self.lock:
+            self.model.train()
             q_vals = self.model(s).gather(1, a)
             loss = nn.functional.smooth_l1_loss(q_vals, target)
 
@@ -124,6 +133,9 @@ class DQNBot(NeuralNetworkBot):
             )
 
     def match_end_feedback(self, match_state, result, score, others):
+        if self.eval_mode:
+            return
+
         if "last_state" in match_state:
             self.observe(
                 match_state,
