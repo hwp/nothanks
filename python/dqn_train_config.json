@@ -1,10 +1,16 @@
 {
   "lr": 0.001,
+  "batch_size": 64,
+  "buffer_size": 5000,
   "checkpoint_every" : 1000,
   "reward_config" : {
-    "win": 50.0,
+    "win": 100.0,
     "draw": 20.0,
     "loss": -50.0
   },
-  "explore_p_pass": 0.8
+  "gamma": 0.98,
+  "epsilon_start": 1.0,
+  "epsilon_end": 0.05,
+  "epsilon_decay": 0.99999,
+  "explore_p_pass": 0.9
 }

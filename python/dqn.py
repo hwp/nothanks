@@ -13,6 +13,7 @@ from nn import NeuralNetworkBot
 from utils import PASS, TAKE
 
 logger = logging.getLogger(__name__)
+# logger.setLevel(level=logging.DEBUG)
 
 
 class DQNBot(NeuralNetworkBot):
@@ -56,6 +57,8 @@ class DQNBot(NeuralNetworkBot):
         self.epsilon_end = train_config.get("epsilon_end", 0.05)
         self.epsilon_decay = train_config.get("epsilon_decay", 0.9999)
         self.explore_p_pass = train_config.get("explore_p_pass", 0.5)
+
+        self.clip_target = train_config.get("clip_target")
 
         # Target network
         self.target_model = copy.deepcopy(self.model)
@@ -126,22 +129,39 @@ class DQNBot(NeuralNetworkBot):
         r = torch.tensor(r, dtype=torch.float32, device=self.device).unsqueeze(1)
         s2 = torch.stack(s2)
         f = torch.tensor(f, dtype=torch.float32, device=self.device).unsqueeze(1)
-        b = torch.tensor(f, dtype=torch.float32, device=self.device).unsqueeze(1)
+        b = torch.tensor(b, dtype=torch.float32, device=self.device).unsqueeze(1)
+
+        logger.debug(f"{s.shape=} {a.shape=} {r.shape=} {f.shape=} {b.shape=}")
 
         with torch.no_grad():
             next_qa = self.target_model(s2)
+            if self.clip_target is not None:
+                next_qa = next_qa.clip(min=-self.clip_target, max=self.clip_target)
             next_q_broke = next_qa[:, [TAKE]]
             next_q = next_qa.max(1, keepdim=True)[0]
             target = r + self.gamma * (1 - f) * ((1 - b) * next_q + b * next_q_broke)
 
+        logger.debug(
+            f"{next_qa.shape=} {next_q_broke.shape=} {next_q.shape=} {target.shape=}"
+        )
+
         with self.lock:
             self.model.train()
             q_vals = self.model(s).gather(1, a)
+            logger.debug(f"{q_vals.shape=}")
+
             loss = nn.functional.smooth_l1_loss(q_vals, target)
+
+            logger.debug(
+                f"{torch.max(loss)=} {torch.max(torch.abs(q_vals))=} {torch.max(torch.abs(target))=}"
+            )
 
             self.optimizer.zero_grad()
             loss.backward()
+            if self.clip_grad is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
             self.optimizer.step()
+            self.record_loss(loss)
 
         self.update_count += 1
         # Update epsilon and target network
@@ -155,6 +175,10 @@ class DQNBot(NeuralNetworkBot):
                 f"[{self.name}] saved checkpoint%{self.update_count} at "
                 f"{checkpoint_path} and target network updated"
             )
+
+        if self.update_count % self.log_loss_every == 0:
+            avg_loss = self.log_loss_to_file()
+            logger.info(f"[{self.name}] loss@{self.update_count}: {avg_loss}")
 
     def match_end_feedback(self, match_state, result, score, others):
         if self.eval_mode:
