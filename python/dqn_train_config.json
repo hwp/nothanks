@@ -1,0 +1,9 @@
+{
+  "lr": 0.001,
+  "checkpoint_every" : 1000,
+  "reward_config" : {
+    "win": 50.0,
+    "draw": 20.0,
+    "loss": -50.0
+  }
+}

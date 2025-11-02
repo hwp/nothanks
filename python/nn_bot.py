@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 
-import argparse
 import logging
 import random
 import string
-import time
 
-import torch
-
+from example import get_parser as get_base_parser
+from example import main
 from nn import NeuralNetworkBot
 
 logging.basicConfig(
@@ -15,73 +13,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SERVER_URL = "http://localhost:3000"
-_DEFAULT_NAMESPACE = "/bots"
-_DEFAULT_BOT_COUNT = 1
 _DEFAULT_BOT_NAME = "NNBot"
-_DEFAULT_CHECKPOINT_EVERY = 50  # number of updates between saving checkpoints
 _DEFAULT_MODEL_DIR = "models"
-_DEFAULT_REWARD_CONFIG = "reward_config.json"
 
 
-def main(
-    name,
-    server_url,
-    namespace,
-    n_bots,
-    model_dir,
-    arch_json,
-    checkpoint_every,
-    init_model,
-    reward_config,
-):
-    torch.autograd.set_detect_anomaly(True)
+class BotFactory:
+    def __init__(self, get_one):
+        self.get_one = get_one
 
-    suffixes = [
-        "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
-    ]
-    bots = [
-        NeuralNetworkBot(
-            f"{name}-{s}",
-            server_url,
-            namespace,
-            model_dir,
-            reward_config=reward_config,
-            init_model=init_model,
-            arch_json=arch_json,
-            checkpoint_every=checkpoint_every,
-        )
-        for s in suffixes
-    ]
-
-    try:
-        logger.info("All bots: Connecting ...")
-        for bot in bots:
-            bot.connect()
-        logger.info("All bots: Connected ...")
-
-        try:
-            while True:
-                time.sleep(10)
-        except KeyboardInterrupt:
-            pass
-    finally:
-        logger.info("All bots: Disconnecting ...")
-        for bot in bots:
-            bot.disconnect()
-        logger.info("All bots: Disconnected ...")
+    def __call__(self, n_bots, name, **kwargs):
+        suffixes = [
+            "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
+        ]
+        bots = [self.get_one(f"{name}-{s}", **kwargs) for s in suffixes]
+        return bots
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser("NeuralNetworkBots")
-    parser.add_argument("--server-url", type=str, default=_DEFAULT_SERVER_URL)
-    parser.add_argument("--namespace", type=str, default=_DEFAULT_NAMESPACE)
-    parser.add_argument("--n-bots", type=int, default=_DEFAULT_BOT_COUNT)
-    parser.add_argument("--name", type=str, default=_DEFAULT_BOT_NAME)
+def get_parser(description, default_name):
+    parser = get_base_parser(description=description, default_name=default_name)
     parser.add_argument("--model-dir", type=str, default=_DEFAULT_MODEL_DIR)
-    parser.add_argument(
-        "--checkpoint-every-updates", type=int, default=_DEFAULT_CHECKPOINT_EVERY
-    )
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -91,23 +41,29 @@ if __name__ == "__main__":
         "--init-model", type=str, help="Name of pretrained model to load from model_dir"
     )
 
-    parser.add_argument(
-        "--reward-config",
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("--eval-mode", action="store_true")
+    group.add_argument(
+        "--train-config",
         type=str,
-        default=_DEFAULT_REWARD_CONFIG,
-        help="JSON file specifying reward function",
+        help="JSON file specifying training config. Not used for eval.",
     )
+    return parser
 
+
+if __name__ == "__main__":
+    parser = get_parser("Launch NN-based bots", default_name=_DEFAULT_BOT_NAME)
     args = parser.parse_args()
 
     main(
-        args.name,
-        args.server_url,
-        args.namespace,
-        args.n_bots,
-        args.model_dir,
+        BotFactory(NeuralNetworkBot),
+        name=args.name,
+        server_url=args.server_url,
+        namespace=args.namespace,
+        n_bots=args.n_bots,
+        model_dir=args.model_dir,
         arch_json=args.model_arch,
-        checkpoint_every=args.checkpoint_every_updates,
         init_model=args.init_model,
-        reward_config=args.reward_config,
+        eval_mode=args.eval_mode,
+        train_config=args.train_config,
     )

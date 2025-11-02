@@ -1,0 +1,16 @@
+{
+  "lr": 0.001,
+  "checkpoint_every" : 100,
+  "reward_config" : {
+    "type": "result_and_score",
+    "config": {
+      "result_weight": 10.0,
+      "self_delta_weight": 1.0,
+      "self_delta_mavg_weight": [0, 0, 1, 1, 2, 2, 2, 1, 1, 1],
+      "rel_oavg_delta_weight": 1.0,
+      "rel_oavg_delta_mavg_weight": [0, 0, 1, 1, 2, 2, 2, 1, 1, 1],
+      "rel_obest_delta_weight": 3.0,
+      "rel_obest_delta_mavg_weight": [0, 0, 1, 1, 2, 2, 2, 1, 1, 1]
+    }
+  }
+}
