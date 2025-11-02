@@ -10,6 +10,7 @@ import torch.optim as optim
 from bot import Bot
 from utils import (
     ACTIONS,
+    TAKE,
     compute_score,
     feature_from_player_state,
     result_and_score_reward,
@@ -81,7 +82,12 @@ class NeuralNetworkBot(Bot):
         self.checkpoint_every = train_config.get("checkpoint_every", 100)
         lr = train_config.get("lr", 0.001)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        self.clip_grad = train_config.get('clip_grad')
         self.update_count = 0
+
+        self.log_loss_every = train_config.get("log_loss_every", 100)
+        self.loss_count = 0
+        self.loss_sum = 1.0
 
         self.reward_config = self.load_reward_config(train_config.get("reward_config"))
 
@@ -123,7 +129,11 @@ class NeuralNetworkBot(Bot):
         logits = self.model(x)
         log_probs = torch.log_softmax(logits, dim=0)
         probs = torch.exp(log_probs).detach().cpu().numpy()
-        action_idx = self.sample_action_from_probs(probs)
+
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        else:
+            action_idx = self.sample_action_from_probs(probs)
 
         match_state["chosen_logits"].append(logits[action_idx])
         scores = {
@@ -135,10 +145,13 @@ class NeuralNetworkBot(Bot):
         return action_idx
 
     def choose_action_eval(self, x, turn_state, match_state):
-        with torch.no_grad():
-            self.model.eval()
-            logits = self.model(x)
-            action_idx = logits.argmax().item()
+        if turn_state.you.chips <= 0:
+            action_idx = TAKE
+        else:
+            with torch.no_grad():
+                self.model.eval()
+                logits = self.model(x)
+                action_idx = logits.argmax().item()
         return action_idx
 
     def choose_action(self, turn_state, match_state) -> str:
@@ -168,7 +181,10 @@ class NeuralNetworkBot(Bot):
 
         self.optimizer.zero_grad()
         loss.backward()
+        if self.clip_grad is not None:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
         self.optimizer.step()
+        self.record_loss(loss)
 
         # checkpoint model every N updates
         self.update_count += 1
@@ -180,3 +196,21 @@ class NeuralNetworkBot(Bot):
         logger.info(
             f"[{self.name}] updated model, avg reward={rewards.mean().item():.3f}"
         )
+
+        if self.update_count % self.log_loss_every == 0:
+            avg_loss = self.log_loss_to_file()
+            logger.info(f"[{self.name}] loss@{self.update_count}: {avg_loss}")
+
+    def record_loss(self, loss):
+        self.loss_count += 1
+        self.loss_sum += loss.detach()
+
+    def log_loss_to_file(self):
+        avg_loss = self.loss_sum.cpu().item() / self.loss_count
+        loss_log_path = os.path.join(self.model_dir, f"{self.name}.loss")
+        with open(loss_log_path, "a") as f:
+            print(f"{self.update_count} {avg_loss}", file=f)
+
+        self.loss_count = 0
+        self.loss_sum = 0.0
+        return avg_loss
