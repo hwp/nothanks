@@ -26,6 +26,7 @@ _DEFAULT_BOT_COUNT = 1
 _DEFAULT_BOT_NAME = "NNBot"
 _DEFAULT_CHECKPOINT_EVERY = 50  # number of updates between saving checkpoints
 _DEFAULT_MODEL_DIR = "models"
+_DEFAULT_REWARD_CONFIG = "reward_config.json"
 
 
 def compute_score(cards, chips):
@@ -62,16 +63,42 @@ def _feature_from_player_state(player):
         *_to_binary_vector(player.cards)
     ]
 
+def _delta_mavg(scores, weight):
+    delta_sum = 0
+    weight_sum = 0
+    for i, w in enumerate(weight):
+        n = i + 1
+        scores_n = np.concatenate((scores[n:], np.ones(n-1) * scores[-1])) # repeat match end score
+        delta_sum += (scores_n - scores[:-1]) * w # no need for the match end score
+        weight_sum += w
+    return delta_sum / weight_sum
+
+
+def _simple_reward(config, score_history, result):
+    result_reward = {"win": 1.0, "draw": 0.0, "loss": -1.0}[result]
+
+    others_scores = np.array([s["others"] for s in score_history])
+    self_scores = np.array([s["score"] for s in score_history])
+    rel_oavg = self_scores - others_scores.mean(axis=1)
+    rel_obest = self_scores - others_scores.min(axis=1)
+
+    return result_reward * config["result_weight"] \
+        - _delta_mavg(self_scores, config["self_delta_mavg_weight"]) * config["self_delta_weight"] \
+        - _delta_mavg(rel_oavg, config["rel_oavg_delta_mavg_weight"]) * config["rel_oavg_delta_weight"] \
+        - _delta_mavg(rel_obest, config["rel_obest_delta_mavg_weight"]) * config["rel_obest_delta_weight"] \
+
 
 class NeuralNetworkBot(Bot):
-    def __init__(self, name, server_url, namespace, model_dir,
-                 init_model: str = None, arch_json: str = None,
-                 lr=0.001, checkpoint_every=100):
+    def __init__(self, name, server_url, namespace, model_dir, reward_config,
+                 init_model: str = None, arch_json: str = None, lr=0.001,
+                 checkpoint_every=100):
         super().__init__(name, server_url, namespace, sequential=True)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_dir = model_dir
         self.checkpoint_every = checkpoint_every
         self.update_count = 0
+        with open(reward_config, "r") as f:
+            self.reward_config = json.load(f)
 
         if init_model is not None and arch_json is not None:
             raise ValueError("init_model and arch_json are mutually exclusive")
@@ -138,13 +165,10 @@ class NeuralNetworkBot(Bot):
         return action
 
     def compute_reward(self, score_history, result):
-        others_scores = np.array([s["others"] for s in score_history])
-        self_scores = np.array([s["score"] for s in score_history])
-        rel = others_scores.mean(axis=1) - self_scores
-        score_delta = np.diff(rel)
-        result_reward = {"win": 1.0, "draw": 0.0, "loss": -1.0}[result]
-        rewards = score_delta + result_reward * 20.0
-        return rewards
+        if self.reward_config["type"] == "simple":
+            return _simple_reward(self.reward_config["config"], score_history, result)
+        else:
+            raise ValueError(f"Unknown {self.reward_config["type"]=}")
 
     def match_end_feedback(self, match_state, result, score, others):
         match_state["score_history"].append({"score": score, "others": others})
@@ -168,9 +192,8 @@ class NeuralNetworkBot(Bot):
         logger.info(f"[{self.name}] updated model, avg reward={rewards.mean().item():.3f}")
 
 
-def main(name, server_url, namespace, n_bots, model_dir,
-         arch_json=None, checkpoint_every=_DEFAULT_CHECKPOINT_EVERY,
-         init_model=None):
+def main(name, server_url, namespace, n_bots, model_dir, arch_json,
+         checkpoint_every, init_model, reward_config):
 
     torch.autograd.set_detect_anomaly(True)
 
@@ -180,6 +203,7 @@ def main(name, server_url, namespace, n_bots, model_dir,
                 server_url,
                 namespace,
                 model_dir,
+                reward_config=reward_config,
                 init_model=init_model,
                 arch_json=arch_json,
                 checkpoint_every=checkpoint_every
@@ -216,6 +240,9 @@ if __name__ == "__main__":
     group.add_argument("--model-arch", type=str, help="JSON file specifying model architecture")
     group.add_argument("--init-model", type=str, help="Name of pretrained model to load from model_dir")
 
+    parser.add_argument("--reward-config", type=str, default=_DEFAULT_REWARD_CONFIG,
+                        help="JSON file specifying reward function")
+
     args = parser.parse_args()
 
     main(
@@ -227,4 +254,5 @@ if __name__ == "__main__":
         arch_json=args.model_arch,
         checkpoint_every=args.checkpoint_every_updates,
         init_model=args.init_model,
+        reward_config=args.reward_config,
     )
