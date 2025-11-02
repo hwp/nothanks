@@ -64,6 +64,8 @@ type RegisterAck =
 const SERVER_URL = process.env.BOT_SERVER_URL || "http://localhost:3000";
 const BOT_NAME = process.env.BOT_NAME || "SmartBot";
 const BOT_COUNT = Number.parseInt(process.env.BOT_COUNT || "1", 10);
+const BASE_SECRET =
+  process.env.BOT_SECRET || `smart-secret-${Math.random().toString(36).slice(2, 10)}`;
 
 interface SmartBotInstance {
   name: string;
@@ -80,16 +82,18 @@ interface SmartBotInstance {
       isTurn: boolean;
     }
   >;
+  secret: string;
 }
 
 const bots: SmartBotInstance[] = [];
 
 for (let index = 0; index < BOT_COUNT; index += 1) {
   const suffix = BOT_COUNT > 1 ? `-${index + 1}` : "";
-  bots.push(createBot(`${BOT_NAME}${suffix}`));
+  const secret = BOT_COUNT > 1 ? `${BASE_SECRET}-${index + 1}` : BASE_SECRET;
+  bots.push(createBot(`${BOT_NAME}${suffix}`, secret));
 }
 
-function createBot(name: string): SmartBotInstance {
+function createBot(name: string, secret: string): SmartBotInstance {
   const socket = io(`${SERVER_URL}/bots`, {
     transports: ["websocket", "polling"],
     reconnection: true,
@@ -103,11 +107,12 @@ function createBot(name: string): SmartBotInstance {
     currentMatchId: null,
     seenCards: new Set<number>(),
     playerSnapshot: new Map(),
+    secret,
   };
 
   socket.on("connect", () => {
     console.log(`[${name}] Connected. Registering…`);
-    socket.emit("registerBot", { name }, (ack: RegisterAck | undefined) => {
+    socket.emit("registerBot", { name, secret }, (ack: RegisterAck | undefined) => {
       if (!ack?.ok) {
         console.error(`[${name}] Registration failed: ${ack?.error ?? "unknown"}`);
         return;

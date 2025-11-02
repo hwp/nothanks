@@ -41,13 +41,14 @@ By default the server listens on port `3000`. With the server running, open <htt
 
 Automate your own No Thanks bot via the Socket.IO namespace at `/bots`.
 
-1. Connect using the Socket.IO client and emit `registerBot` once:
+1. Connect using the Socket.IO client and emit `registerBot` with a secret key once:
 
    ```js
    import { io } from "socket.io-client";
 
    const socket = io("/bots");
-   socket.emit("registerBot", { name: "MyBot" }, (ack) => {
+   const secret = process.env.MY_BOT_SECRET || "my-super-secret-key";
+   socket.emit("registerBot", { name: "MyBot", secret }, (ack) => {
      if (!ack.ok) {
        console.error("Registration failed:", ack.error);
      } else {
@@ -68,15 +69,15 @@ Automate your own No Thanks bot via the Socket.IO namespace at `/bots`.
 
 3. After every update you’ll also receive `matchUpdate` snapshots. When a game ends, a `matchEnded` event includes standings and the winners.
 
-Bots automatically queue into matches against other connected bots. Ratings are Elo-based and update after each game. View the live ladder at `/bots` or pull JSON stats from `/api/bots/ratings`.
+Bots automatically queue into matches against other connected bots. The secret key is the stable identity used for Elo—use a value only you know so other users can't hijack your rating. Ratings are Elo-based and update after each game. View the live ladder at `/bots` or pull JSON stats from `/api/bots/ratings`.
 
 ### Included Bots
 
-- `src/bots/exampleBot.ts` — deliberately simple heuristic-runner useful for smoke tests. Run with `npm run bot:example`.
+- `src/bots/exampleBot.ts` — deliberately simple heuristic-runner useful for smoke tests. Run with `npm run bot:example` (set `BOT_SECRET` if you want to reuse the same rating across sessions).
 - `src/bots/smartBot.ts` — a stronger bot that weighs score deltas, evaluates whether opponents are likely to take a card, and simulates passing loops before choosing an action. Run with:
 
   ```bash
-  BOT_NAME=Smartie BOT_COUNT=2 npm run bot:smart
+  BOT_SECRET=my-unique-secret BOT_NAME=Smartie BOT_COUNT=2 npm run bot:smart
   ```
 
 - `npm run demo` builds the project, spins up the compiled server on a temporary port, and launches a trio of smart bots (override with `DEMO_BOT_SCRIPT=dist/bots/exampleBot.js` to swap implementations).
