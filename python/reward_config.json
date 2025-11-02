@@ -1,5 +1,5 @@
 {
-  "type": "simple",
+  "type": "result_and_score",
   "config": {
     "result_weight": 10.0,
     "self_delta_weight": 1.0,

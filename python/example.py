@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
 import argparse
+import logging
 import random
 import string
 import time
-import logging
 
 from bot import Bot
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,9 @@ class RandomBot(Bot):
 
 
 def main(name, server_url, namespace, n_bots):
-    suffixes = [''.join(random.choices(string.ascii_lowercase,k=3)) for _ in range(n_bots)]
+    suffixes = [
+        "".join(random.choices(string.ascii_lowercase, k=3)) for _ in range(n_bots)
+    ]
     p_pass_list = [0.1 + 0.8 * i / (n_bots - 1) for i in range(n_bots)]
     bots = [
         RandomBot(f"{name}-{s}-p{p:.2f}", server_url, namespace, p_pass=p)
@@ -59,6 +60,7 @@ def main(name, server_url, namespace, n_bots):
         for bot in bots:
             bot.disconnect()
         logger.info("All bots: Disconnected ...")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Example bots")

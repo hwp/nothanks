@@ -1,14 +1,15 @@
-from collections import deque
-import threading
 import logging
+import threading
+from collections import deque
 
 import socketio
 
 logger = logging.getLogger(__name__)
 
+
 class PlayerState:
     def __init__(self, data):
-        self.name= data["name"]
+        self.name = data["name"]
         self.cards = data["cards"]
         self.chips = data["chips"]
 
@@ -20,7 +21,9 @@ class TurnState:
         self.pot = data["pot"]
         self.n_players = len(data["players"])
 
-        player_seq_id = next(i for i, p in enumerate(data["players"]) if p["botId"] == bot_id)
+        player_seq_id = next(
+            i for i, p in enumerate(data["players"]) if p["botId"] == bot_id
+        )
         self.you = PlayerState(data["players"][player_seq_id])
         self.others = [
             PlayerState(data["players"][(player_seq_id + i) % self.n_players])
@@ -77,13 +80,17 @@ class Bot:
         match_state = self.match_states[match_id]
 
         decision = self.choose_action(turn_state, match_state)
-        logger.debug(f"[{self.name}] chooses {decision} "
-              f"(card {turn_state.current}, pot {turn_state.pot}, "
-              f"chips {turn_state.you.chips}).")
+        logger.debug(
+            f"[{self.name}] chooses {decision} "
+            f"(card {turn_state.current}, pot {turn_state.pot}, "
+            f"chips {turn_state.you.chips})."
+        )
 
-        self.sio.emit("botAction",
-                      {"matchId": match_id, "action": decision},
-                      namespace=self.namespace)
+        self.sio.emit(
+            "botAction",
+            {"matchId": match_id, "action": decision},
+            namespace=self.namespace,
+        )
 
     def on_match_update(self, msg):
         # no need to react to match_update
@@ -107,15 +114,18 @@ class Bot:
             result = "loss"
 
         n_players = len(msg["standings"])
-        player_seq_id = next( i for i, p in enumerate(msg["standings"])
-                                if p["botId"] == self.bot_id)
+        player_seq_id = next(
+            i for i, p in enumerate(msg["standings"]) if p["botId"] == self.bot_id
+        )
         score = msg["standings"][player_seq_id]["totalScore"]
         others = [
             msg["standings"][(player_seq_id + i) % n_players]["totalScore"]
             for i in range(1, n_players)
         ]
 
-        logger.info(f"[{self.name}][{match_id}] match ended with {result} ({score=}, {others=})")
+        logger.info(
+            f"[{self.name}][{match_id}] match ended with {result} ({score=}, {others=})"
+        )
 
         self.match_end_feedback(self.match_states[match_id], result, score, others)
         del self.match_states[match_id]
@@ -132,7 +142,7 @@ class Bot:
         logger.info(f"[{self.name}] connection error: {msg}")
 
     def connect(self):
-        self.sio.connect(f"{self.server_url}",  namespaces=[self.namespace])
+        self.sio.connect(f"{self.server_url}", namespaces=[self.namespace])
         self.sio.emit("registerBot", {"name": self.name}, namespace=self.namespace)
 
     def disconnect(self):
