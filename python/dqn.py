@@ -66,7 +66,7 @@ class DQNBot(NeuralNetworkBot):
         self.target_model.eval()
 
     def load_reward_config(self, reward_config):
-        self.reward_map = reward_config
+        self.reward_config = reward_config
 
     def init_match(self):
         return {}
@@ -82,11 +82,17 @@ class DQNBot(NeuralNetworkBot):
                 q_values = self.model(x.unsqueeze(0)).squeeze(0)
                 action_idx = q_values.argmax().item()
 
+        reward = self.turn_reward(
+            match_state,
+            turn_state.you.score(),
+            [p.score() for p in turn_state.others],
+        )
+
         if "last_state" in match_state:
             self.observe(
                 match_state,
                 next_state=x,
-                reward=0.0,
+                reward=reward,
                 final=0.0,
                 broke=1.0 if turn_state.you.chips <= 0 else 0.0,  # broke at this turn
             )
@@ -180,6 +186,9 @@ class DQNBot(NeuralNetworkBot):
             avg_loss = self.log_loss_to_file()
             logger.info(f"[{self.name}] loss@{self.update_count}: {avg_loss}")
 
+        if self.update_count % self.lr_decay == 0:
+            self.lr_scheduler.step()
+
     def match_end_feedback(self, match_state, result, score, others):
         if self.eval_mode:
             return
@@ -188,7 +197,16 @@ class DQNBot(NeuralNetworkBot):
             self.observe(
                 match_state,
                 next_state=match_state["last_state"],  # this is just a place holder
-                reward=self.reward_map[result],
+                reward=self.match_end_reward(match_state, result, score, others),
                 final=1.0,
                 broke=0.0,  # doesn't matter for the ending state
             )
+
+    def turn_reward(self, match_state, score, others):
+        rel_score = min(others) - score
+        rel_score_delta = rel_score - match_state.get("rel_score", 0)
+        match_state["rel_score"] = rel_score
+        return self.reward_config["rel_score"] * rel_score_delta
+
+    def match_end_reward(self, match_state, result, score, others):
+        return self.reward_config[result] + self.turn_reward(match_state, score, others)

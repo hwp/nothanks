@@ -13,6 +13,17 @@ class PlayerState:
         self.cards = data["cards"]
         self.chips = data["chips"]
 
+    def score(self):
+        """Compute No Thanks! score: sum of lowest cards in each sequence - chips."""
+        if not self.cards:
+            return -self.chips
+        cards = sorted(self.cards)
+        total = cards[0]
+        for i in range(1, len(cards)):
+            if cards[i] != cards[i - 1] + 1:
+                total += cards[i]
+        return total - self.chips
+
 
 class TurnState:
     def __init__(self, data, bot_id):
@@ -64,7 +75,7 @@ class Bot:
     def on_match_started(self, msg):
         match_id = msg.get("matchId")
         self.match_states[match_id] = self.init_match()
-        logger.info(f"[{self.name}][{match_id}] match started")
+        logger.debug(f"[{self.name}][{match_id}] match started")
 
         if self.match_queue is not None:
             self.match_queue.append(match_id)
@@ -122,9 +133,14 @@ class Bot:
             msg["standings"][(player_seq_id + i) % n_players]["totalScore"]
             for i in range(1, n_players)
         ]
+        others_name = [
+            msg["standings"][(player_seq_id + i) % n_players]["name"]
+            for i in range(1, n_players)
+        ]
 
         logger.info(
-            f"[{self.name}][{match_id}] match ended with {result} ({score=}, {others=})"
+            f"[{self.name}][{match_id}] match (with {', '.join(others_name)}) "
+            f"ended with {result} ({score=}, {others=})"
         )
 
         self.match_end_feedback(self.match_states[match_id], result, score, others)

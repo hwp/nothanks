@@ -5,18 +5,6 @@ PASS = 1
 ACTIONS = ["take", "pass"]
 
 
-def compute_score(cards, chips):
-    """Compute No Thanks! score: sum of lowest cards in each sequence - chips."""
-    if not cards:
-        return -chips
-    cards = sorted(cards)
-    total = cards[0]
-    for i in range(1, len(cards)):
-        if cards[i] != cards[i - 1] + 1:
-            total += cards[i]
-    return total - chips
-
-
 def to_binary_vector(cards):
     return [1.0 if c in cards else -1.0 for c in range(3, 36)]
 
