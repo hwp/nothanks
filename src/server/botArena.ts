@@ -75,11 +75,13 @@ export default class BotArena {
 
   readonly activeBots = new Map<string, ActiveBot>();
 
-  private readonly waitingQueue: string[] = [];
-
   private readonly matches = new Map<string, BotMatch>();
 
   private readonly matchByBotId = new Map<string, string>();
+
+  private startNewSeasonLock = false;
+
+  private seasonId = 0;
 
   constructor(io: Server, app?: Application) {
     this.namespace = io.of("/bots");
@@ -100,10 +102,7 @@ export default class BotArena {
       this.handleBotAction(socket, payload);
     });
     socket.on("enqueue", () => {
-      const bot = this.getBotBySocket(socket);
-      if (bot) {
-        this.enqueueBot(bot);
-      }
+      // no op
     });
     socket.on("disconnect", () => {
       this.handleDisconnect(socket);
@@ -183,7 +182,7 @@ export default class BotArena {
       this.matchByBotId.delete(bot.id);
     }
 
-    this.enqueueBot(bot);
+    this.tryStartNewSeason();
   }
 
   private handleBotAction(socket: Socket, payload: { matchId?: string; action?: string }): void {
@@ -211,7 +210,6 @@ export default class BotArena {
     bot.socket = socket;
     this.activeBots.delete(bot.id);
 
-    this.removeFromQueue(bot.id);
     const matchId = this.matchByBotId.get(bot.id);
     if (matchId) {
       const match = this.matches.get(matchId);
@@ -219,46 +217,49 @@ export default class BotArena {
     }
   }
 
-  enqueueBot(bot: ActiveBot): void {
-    if (this.matchByBotId.has(bot.id)) {
+  private tryStartNewSeason(): void {
+    if (this.matches.size > 0) {
+      // season still running
       return;
     }
-    if (this.waitingQueue.includes(bot.id)) {
+
+    if (this.startNewSeasonLock) {
       return;
     }
-    this.waitingQueue.push(bot.id);
-    this.tryStartMatches();
-  }
+    this.startNewSeasonLock = true;
 
-  private removeFromQueue(botId: string): void {
-    const index = this.waitingQueue.indexOf(botId);
-    if (index !== -1) {
-      this.waitingQueue.splice(index, 1);
-    }
-  }
-
-  private tryStartMatches(): void {
-    while (this.waitingQueue.length >= MATCH_SIZE) {
-      const participants: ActiveBot[] = [];
-      for (let i = 0; i < MATCH_SIZE; i += 1) {
-        const pickIndex = Math.floor(Math.random() * this.waitingQueue.length);
-        const botId = this.waitingQueue.splice(pickIndex, 1)[0];
-        const bot = this.activeBots.get(botId);
-        if (bot && bot.connected) {
-          participants.push(bot);
-        }
+    // check connection
+    for (const [botId, bot] of this.activeBots.entries()) {
+      if (!bot.connected) {
+        this.activeBots.delete(botId);
       }
+    }
+
+    if (this.activeBots.size < MATCH_SIZE) {
+      this.startNewSeasonLock = false;
+      return;
+    }
+
+    // log
+    console.log(`Starting season #${this.seasonId} with ${this.activeBots.size} bots`);
+    this.seasonId += 1;
+
+    // shuffle all active bots
+    const bots = Array.from(this.activeBots.values());
+    for (let i = bots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bots[i], bots[j]] = [bots[j], bots[i]];
+    }
+
+    // start matches
+    for (let i = 0; i < bots.length; i += MATCH_SIZE) {
+      const participants = bots.slice(i, i + MATCH_SIZE);
       if (participants.length === MATCH_SIZE) {
         this.startMatch(participants);
-      } else {
-        participants.forEach((bot) => {
-          if (bot) {
-            this.enqueueBot(bot);
-          }
-        });
-        break;
       }
     }
+
+    this.startNewSeasonLock = false;
   }
 
   private startMatch(participants: ActiveBot[]): void {
@@ -275,6 +276,10 @@ export default class BotArena {
     match.participants.forEach((participant) => {
       this.matchByBotId.delete(participant.botId);
     });
+
+    if (this.matches.size === 0) {
+      this.tryStartNewSeason();
+    }
   }
 
   updateStatsFromMatch(summary: MatchSummary): void {
@@ -671,13 +676,6 @@ class BotMatch {
       winners,
     });
     this.arena.finishMatch(this);
-
-    standings.forEach((entry) => {
-      const bot = this.arena.activeBots.get(entry.botId);
-      if (bot && bot.connected) {
-        this.arena.enqueueBot(bot);
-      }
-    });
   }
 
   private broadcast(event: string, payload: unknown): void {
