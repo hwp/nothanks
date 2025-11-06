@@ -4,14 +4,13 @@ import os
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.optim as optim
 
 from bot import Bot
+from modules import build_model_from_json
 from utils import (
     ACTIONS,
     TAKE,
-    compute_score,
     feature_from_player_state,
     result_and_score_reward,
     result_reward,
@@ -19,18 +18,6 @@ from utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def build_model_from_json(arch_def):
-    """Recursively build nn.Module from JSON list structure"""
-    module_type, module_args = arch_def
-
-    if module_type == "Sequential":
-        return nn.Sequential(*[build_model_from_json(a) for a in module_args])
-    elif hasattr(nn, module_type):
-        return getattr(nn, module_type)(**module_args)
-    else:
-        raise ValueError(f"Unknown layer type: {module_type}")
 
 
 class NeuralNetworkBot(Bot):
@@ -81,15 +68,19 @@ class NeuralNetworkBot(Bot):
     def load_train_config(self, train_config):
         self.checkpoint_every = train_config.get("checkpoint_every", 100)
         lr = train_config.get("lr", 0.001)
+        self.lr_decay = train_config.get("lr_decay", 1_000_000)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        self.clip_grad = train_config.get('clip_grad')
+        self.lr_scheduler = optim.lr_scheduler.MultiplicativeLR(
+            self.optimizer, lambda epoch: 0.5**epoch
+        )
+        self.clip_grad = train_config.get("clip_grad")
         self.update_count = 0
 
         self.log_loss_every = train_config.get("log_loss_every", 100)
         self.loss_count = 0
         self.loss_sum = 0.0
 
-        self.reward_config = self.load_reward_config(train_config.get("reward_config"))
+        self.load_reward_config(train_config.get("reward_config"))
 
     def load_reward_config(self, reward_config):
         reward_type = reward_config["type"]
@@ -137,8 +128,8 @@ class NeuralNetworkBot(Bot):
 
         match_state["chosen_logits"].append(logits[action_idx])
         scores = {
-            "score": compute_score(turn_state.you.cards, turn_state.you.chips),
-            "others": [compute_score(p.cards, p.chips) for p in turn_state.others],
+            "score": turn_state.you.score(),
+            "others": [p.score() for p in turn_state.others],
         }
         match_state["score_history"].append(scores)
 
@@ -200,6 +191,9 @@ class NeuralNetworkBot(Bot):
         if self.update_count % self.log_loss_every == 0:
             avg_loss = self.log_loss_to_file()
             logger.info(f"[{self.name}] loss@{self.update_count}: {avg_loss}")
+
+        if self.update_count % self.lr_decay == 0:
+            self.lr_scheduler.step()
 
     def record_loss(self, loss):
         self.loss_count += 1
