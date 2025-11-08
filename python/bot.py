@@ -159,7 +159,7 @@ class Bot:
 
     def connect(self):
         self.sio.connect(f"{self.server_url}", namespaces=[self.namespace])
-        self.sio.emit("registerBot", {"name": self.name}, namespace=self.namespace)
+        self.sio.emit("registerBot", {"name": self.name, "secret": self.name}, namespace=self.namespace)
 
     def disconnect(self):
         self.sio.disconnect()
